@@ -13,25 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import tensorflow as tf
-import tensorflowvisu
 from tensorflow.examples.tutorials.mnist import input_data as mnist_data
 print("Tensorflow version " + tf.__version__)
+os.environ['CUDA_VISIBLE_DEVICES']='2'
 tf.set_random_seed(0)
 
 # neural network with 5 layers
 #
-# · · · · · · · · · ·          (input data, flattened pixels)       X [batch, 784]   # 784 = 28*28
-# \x/x\x/x\x/x\x/x\x/       -- fully connected layer (sigmoid)      W1 [784, 200]      B1[200]
-#  · · · · · · · · ·                                                Y1 [batch, 200]
-#   \x/x\x/x\x/x\x/         -- fully connected layer (sigmoid)      W2 [200, 100]      B2[100]
-#    · · · · · · ·                                                  Y2 [batch, 100]
-#     \x/x\x/x\x/           -- fully connected layer (sigmoid)      W3 [100, 60]       B3[60]
-#      · · · · ·                                                    Y3 [batch, 60]
-#       \x/x\x/             -- fully connected layer (sigmoid)      W4 [60, 30]        B4[30]
-#        · · ·                                                      Y4 [batch, 30]
-#         \x/               -- fully connected layer (softmax)      W5 [30, 10]        B5[10]
-#          ·                                                        Y5 [batch, 10]
+# (input data, flattened pixels)       X [batch, 784]   # 784 = 28*28
+# -- fully connected layer (sigmoid)   W1 [784, 200]      B1[200]
+#                                      Y1 [batch, 200]
+# -- fully connected layer (sigmoid)   W2 [200, 100]      B2[100]
+#                                      Y2 [batch, 100]
+# -- fully connected layer (sigmoid)   W3 [100, 60]       B3[60]
+#                                      Y3 [batch, 60]
+# -- fully connected layer (sigmoid)   W4 [60, 30]        B4[30]
+#                                      Y4 [batch, 30]
+# -- fully connected layer (softmax)   W5 [30, 10]        B5[10]
+#                                      Y5 [batch, 10]
 
 # Download images and labels into mnist.test (10K images+labels) and mnist.train (60K images+labels)
 mnist = mnist_data.read_data_sets("data", one_hot=True, reshape=False, validation_size=0)
@@ -66,14 +67,14 @@ Y2 = tf.nn.sigmoid(tf.matmul(Y1, W2) + B2)
 Y3 = tf.nn.sigmoid(tf.matmul(Y2, W3) + B3)
 Y4 = tf.nn.sigmoid(tf.matmul(Y3, W4) + B4)
 Ylogits = tf.matmul(Y4, W5) + B5
-Y = tf.nn.softmax(Ylogits)
+Y = tf.nn.softmax(Ylogits)      #normalize rnage (0, 1)
 
 # cross-entropy loss function (= -sum(Y_i * log(Yi)) ), normalised for batches of 100  images
 # TensorFlow provides the softmax_cross_entropy_with_logits function to avoid numerical stability
 # problems with log(0) which is NaN
 cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=Ylogits, labels=Y_)
 cross_entropy = tf.reduce_mean(cross_entropy)*100
-
+tf.summary.scalar('CS', cross_entropy)
 # accuracy of the trained model, between 0 (worst) and 1 (best)
 correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -81,10 +82,6 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 # matplotlib visualisation
 allweights = tf.concat([tf.reshape(W1, [-1]), tf.reshape(W2, [-1]), tf.reshape(W3, [-1]), tf.reshape(W4, [-1]), tf.reshape(W5, [-1])], 0)
 allbiases  = tf.concat([tf.reshape(B1, [-1]), tf.reshape(B2, [-1]), tf.reshape(B3, [-1]), tf.reshape(B4, [-1]), tf.reshape(B5, [-1])], 0)
-I = tensorflowvisu.tf_format_mnist_images(X, Y, Y_)
-It = tensorflowvisu.tf_format_mnist_images(X, Y, Y_, 1000, lines=25)
-datavis = tensorflowvisu.MnistDataVis()
-
 # training step, learning rate = 0.003
 learning_rate = 0.003
 train_step = tf.train.AdamOptimizer(learning_rate).minimize(cross_entropy)
@@ -93,7 +90,8 @@ train_step = tf.train.AdamOptimizer(learning_rate).minimize(cross_entropy)
 init = tf.global_variables_initializer()
 sess = tf.Session()
 sess.run(init)
-
+writer = tf.summary.FileWriter('./log', sess.graph)
+merge_op = tf.summary.merge_all()
 
 # You can call this function in a loop to train the model, 100 images at a time
 def training_step(i, update_test_data, update_train_data):
@@ -103,29 +101,29 @@ def training_step(i, update_test_data, update_train_data):
 
     # compute training values for visualisation
     if update_train_data:
-        a, c, im, w, b = sess.run([accuracy, cross_entropy, I, allweights, allbiases], {X: batch_X, Y_: batch_Y})
+        a, c, w, b, result = sess.run([accuracy, cross_entropy, allweights, allbiases, merge_op], {X: batch_X, Y_: batch_Y})
         print(str(i) + ": accuracy:" + str(a) + " loss: " + str(c) + " (lr:" + str(learning_rate) + ")")
-        datavis.append_training_curves_data(i, a, c)
-        datavis.update_image1(im)
-        datavis.append_data_histograms(i, w, b)
+        writer.add_summary(result, i)
 
     # compute test values for visualisation
     if update_test_data:
-        a, c, im = sess.run([accuracy, cross_entropy, It], {X: mnist.test.images, Y_: mnist.test.labels})
+        a, c, result = sess.run([accuracy, cross_entropy, merge_op], {X: mnist.test.images, Y_: mnist.test.labels})
         print(str(i) + ": ********* epoch " + str(i*100//mnist.train.images.shape[0]+1) + " ********* test accuracy:" + str(a) + " test loss: " + str(c))
-        datavis.append_test_curves_data(i, a, c)
-        datavis.update_image2(im)
+        writer.add_summary(result, i)
 
     # the backpropagation training step
     sess.run(train_step, {X: batch_X, Y_: batch_Y})
 
-datavis.animate(training_step, iterations=10000+1, train_data_update_freq=20, test_data_update_freq=100, more_tests_at_start=True)
+for step in range(1000):
+    training_step(step, True, False)
+    if step % 100 == 0:
+        training_step(step, False, True)
+
 
 # to save the animation as a movie, add save_movie=True as an argument to datavis.animate
 # to disable the visualisation use the following line instead of the datavis.animate line
 # for i in range(10000+1): training_step(i, i % 100 == 0, i % 20 == 0)
 
-print("max test accuracy: " + str(datavis.get_max_test_accuracy()))
 
 # Some results to expect:
 # (In all runs, if sigmoids are used, all biases are initialised at 0, if RELUs are used,
