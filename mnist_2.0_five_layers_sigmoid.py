@@ -74,7 +74,7 @@ Y = tf.nn.softmax(Ylogits)      #normalize rnage (0, 1)
 # problems with log(0) which is NaN
 cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=Ylogits, labels=Y_)
 cross_entropy = tf.reduce_mean(cross_entropy)*100
-tf.summary.scalar('CS', cross_entropy)
+tf.summary.scalar('ce', cross_entropy)
 # accuracy of the trained model, between 0 (worst) and 1 (best)
 correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -114,10 +114,10 @@ def training_step(i, update_test_data, update_train_data):
     # the backpropagation training step
     sess.run(train_step, {X: batch_X, Y_: batch_Y})
 
-for step in range(1000):
-    training_step(step, True, False)
+for step in range(101):
+    training_step(step, False, True)
     if step % 100 == 0:
-        training_step(step, False, True)
+        training_step(step, True, False)
 
 
 # to save the animation as a movie, add save_movie=True as an argument to datavis.animate
