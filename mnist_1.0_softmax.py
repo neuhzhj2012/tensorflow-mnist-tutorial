@@ -52,6 +52,7 @@ XX = tf.reshape(X, [-1, 784])
 
 # The model
 Y = tf.nn.softmax(tf.matmul(XX, W) + b)
+output = tf.matmul(XX, W) + b
 
 # loss function: cross-entropy = - sum( Y_i * log(Yi) )
 #                           Y: the computed output vector
@@ -64,13 +65,15 @@ Y = tf.nn.softmax(tf.matmul(XX, W) + b)
 cross_entropy = -tf.reduce_mean(Y_ * tf.log(Y)) * 1000.0  # normalized for batches of 100 images,
                                                           # *10 because  "mean" included an unwanted division by 10
 
-tf.summary.scalar('loss', cross_entropy)
+cross_entropy_1 = tf.nn.softmax_cross_entropy_with_logits(labels=Y_, logits=output)
+cross_entropy_1 = tf.reduce_mean(cross_entropy_1) * 100     #验证cross_entropy是否正确(1000而不是100) 结果是1000
+tf.summary.scalar('ce', cross_entropy)
+tf.summary.scalar('tf_nn_ce', cross_entropy_1)
 # accuracy of the trained model, between 0 (worst) and 1 (best)
 correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
 tf.summary.scalar('accuracy', accuracy)
-# training, learning rate = 0.005
+
 train_step = tf.train.GradientDescentOptimizer(0.005).minimize(cross_entropy)
 
 # init
@@ -82,11 +85,11 @@ writer = tf.summary.FileWriter('./log', sess.graph) #write to file
 merge_op = tf.summary.merge_all()
 
 # You can call this function in a loop to train the model, 100 images at a time
-for step in range(1000):
+for step in range(100):
     # training on batches of 100 images with 100 labels
     batch_X, batch_Y = mnist.train.next_batch(100)
     sess.run(train_step, feed_dict={X: batch_X, Y_: batch_Y})
-    train_a, train_c, result= sess.run([accuracy, cross_entropy, merge_op], feed_dict={X: batch_X, Y_: batch_Y})
+    train_a, train_c, ce_1, result= sess.run([accuracy, cross_entropy, cross_entropy_1, merge_op], feed_dict={X: batch_X, Y_: batch_Y})
     test_a, test_c = sess.run([accuracy, cross_entropy], feed_dict={X: mnist.test.images, Y_: mnist.test.labels})
     print str(step), "train : accuracy:" + str(train_a) + " loss: " + str(train_c)
     print "test : accuracy:" + str(test_a) + " loss: " + str(test_c)
