@@ -15,8 +15,9 @@
 
 import tensorflow as tf
 import tensorflowvisu
-import math
+import math, os
 from tensorflow.examples.tutorials.mnist import input_data as mnist_data
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 print("Tensorflow version " + tf.__version__)
 tf.set_random_seed(0)
 
@@ -43,6 +44,8 @@ X = tf.placeholder(tf.float32, [None, 28, 28, 1])
 Y_ = tf.placeholder(tf.float32, [None, 10])
 # variable learning rate
 lr = tf.placeholder(tf.float32)
+
+tf.summary.scalar("lr", lr)
 
 # three convolutional layers with their channel counts, and a
 # fully connected layer (tha last layer has 10 softmax neurons)
@@ -91,17 +94,19 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 # matplotlib visualisation
 allweights = tf.concat([tf.reshape(W1, [-1]), tf.reshape(W2, [-1]), tf.reshape(W3, [-1]), tf.reshape(W4, [-1]), tf.reshape(W5, [-1])], 0)
 allbiases  = tf.concat([tf.reshape(B1, [-1]), tf.reshape(B2, [-1]), tf.reshape(B3, [-1]), tf.reshape(B4, [-1]), tf.reshape(B5, [-1])], 0)
-I = tensorflowvisu.tf_format_mnist_images(X, Y, Y_)
-It = tensorflowvisu.tf_format_mnist_images(X, Y, Y_, 1000, lines=25)
-datavis = tensorflowvisu.MnistDataVis()
 
 # training step, the learning rate is a placeholder
 train_step = tf.train.AdamOptimizer(lr).minimize(cross_entropy)
+
+tf.summary.scalar("ce", cross_entropy )
 
 # init
 init = tf.global_variables_initializer()
 sess = tf.Session()
 sess.run(init)
+
+writer = tf.summary.FileWriter('./log', sess.graph) #write to file
+merge_op = tf.summary.merge_all()
 
 # You can call this function in a loop to train the model, 100 images at a time
 def training_step(i, update_test_data, update_train_data):
@@ -117,29 +122,27 @@ def training_step(i, update_test_data, update_train_data):
 
     # compute training values for visualisation
     if update_train_data:
-        a, c, im, w, b = sess.run([accuracy, cross_entropy, I, allweights, allbiases], {X: batch_X, Y_: batch_Y})
+        a, c, w, b = sess.run([accuracy, cross_entropy, allweights, allbiases], {X: batch_X, Y_: batch_Y})
         print(str(i) + ": accuracy:" + str(a) + " loss: " + str(c) + " (lr:" + str(learning_rate) + ")")
-        datavis.append_training_curves_data(i, a, c)
-        datavis.update_image1(im)
-        datavis.append_data_histograms(i, w, b)
 
     # compute test values for visualisation
     if update_test_data:
-        a, c, im = sess.run([accuracy, cross_entropy, It], {X: mnist.test.images, Y_: mnist.test.labels})
+        a, c= sess.run([accuracy, cross_entropy], {X: mnist.test.images, Y_: mnist.test.labels})
         print(str(i) + ": ********* epoch " + str(i*100//mnist.train.images.shape[0]+1) + " ********* test accuracy:" + str(a) + " test loss: " + str(c))
-        datavis.append_test_curves_data(i, a, c)
-        datavis.update_image2(im)
 
     # the backpropagation training step
-    sess.run(train_step, {X: batch_X, Y_: batch_Y, lr: learning_rate})
+    _, result = sess.run([train_step, merge_op], {X: batch_X, Y_: batch_Y, lr: learning_rate})
+    writer.add_summary(result, i)
 
-datavis.animate(training_step, 10001, train_data_update_freq=10, test_data_update_freq=100)
 
 # to save the animation as a movie, add save_movie=True as an argument to datavis.animate
 # to disable the visualisation use the following line instead of the datavis.animate line
 # for i in range(10000+1): training_step(i, i % 100 == 0, i % 20 == 0)
 
-print("max test accuracy: " + str(datavis.get_max_test_accuracy()))
+for step in range(101):
+    training_step(step, False, True)
+    if step % 100 == 0:
+        training_step(step, True, False)
 
 # layers 4 8 12 200, patches 5x5str1 5x5str2 4x4str2 best 0.989 after 10000 iterations
 # layers 4 8 12 200, patches 5x5str1 4x4str2 4x4str2 best 0.9892 after 10000 iterations
