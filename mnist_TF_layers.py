@@ -9,7 +9,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import os
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.estimator import run_config as run_config_lib
@@ -18,6 +18,7 @@ from tensorflow.examples.tutorials.mnist import input_data as mnist_data
 
 import math
 from mlengine.digits import test_digits
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 print("Tensorflow version " + tf.__version__)
 logging.set_verbosity(logging.INFO)
 
@@ -39,17 +40,14 @@ def train_data_input_fn():
 def eval_data_input_fn():
     return tf.constant(mnist.test.images), tf.constant(mnist.test.labels)
 
-
 # Test data for a predictions run
 def predict_input_fn():
     return tf.constant(test_digits)
-
 
 # Model loss (not needed in INFER mode)
 def conv_model_loss(Ylogits, Y_, mode):
     return tf.reduce_mean(tf.losses.softmax_cross_entropy(tf.one_hot(Y_,10), Ylogits)) * 100 \
         if mode == tf.estimator.ModeKeys.TRAIN or mode == tf.estimator.ModeKeys.EVAL else None
-
 
 # Model optimiser (only needed in TRAIN mode)
 def conv_model_train_op(loss, mode):
@@ -59,13 +57,11 @@ def conv_model_train_op(loss, mode):
         learning_rate_decay_fn=lambda lr, step: 0.0001 + tf.train.exponential_decay(lr, step, -2000, math.e)
         ) if mode == tf.estimator.ModeKeys.TRAIN else None
 
-
 # Model evaluation metric (not needed in INFER mode)
 def conv_model_eval_metrics(classes, Y_, mode):
     # You can name the fields of your metrics dictionary as you like.
     return {'accuracy': tf.metrics.accuracy(classes, Y_)} \
         if mode == tf.estimator.ModeKeys.TRAIN or mode == tf.estimator.ModeKeys.EVAL else None
-
 
 # Model
 def conv_model(features, labels, mode):
@@ -95,7 +91,6 @@ def conv_model(features, labels, mode):
         train_op=train_op,
         eval_metric_ops=eval_metrics
     )
-
 
 # Configuration to save a checkpoint every 1000 steps.
 # Compatibility WARNING:
