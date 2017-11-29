@@ -15,8 +15,9 @@
 
 import tensorflow as tf
 import tensorflowvisu
-import math
+import math, os
 from tensorflow.examples.tutorials.mnist import input_data as mnist_data
+os.environ['CUDA_VISIBLE_DEVICES']='2'
 print("Tensorflow version " + tf.__version__)
 tf.set_random_seed(0)
 
@@ -152,9 +153,6 @@ allbiases  = tf.concat([tf.reshape(B1, [-1]), tf.reshape(B2, [-1]), tf.reshape(B
 # to use for RELU
 allactivations = tf.concat([tf.reduce_max(Y1, [0]), tf.reduce_max(Y2, [0]), tf.reduce_max(Y3, [0]), tf.reduce_max(Y4, [0])], 0)
 alllogits = tf.concat([tf.reshape(Y1l, [-1]), tf.reshape(Y2l, [-1]), tf.reshape(Y3l, [-1]), tf.reshape(Y4l, [-1])], 0)
-I = tensorflowvisu.tf_format_mnist_images(X, Y, Y_)
-It = tensorflowvisu.tf_format_mnist_images(X, Y, Y_, 1000, lines=25)
-datavis = tensorflowvisu.MnistDataVis(title4="Logits", title5="Max activations across batch", histogram4colornum=2, histogram5colornum=2)
 
 
 # training step, the learning rate is a placeholder
@@ -184,30 +182,29 @@ def training_step(i, update_test_data, update_train_data):
 
     # compute training values for visualisation
     if update_train_data:
-        a, c, im, al, ac = sess.run([accuracy, cross_entropy, I, alllogits, allactivations], {X: batch_X, Y_: batch_Y, tst: False})
+        a, c, al, ac = sess.run([accuracy, cross_entropy, alllogits, allactivations], {X: batch_X, Y_: batch_Y, tst: False})
         print(str(i) + ": accuracy:" + str(a) + " loss: " + str(c) + " (lr:" + str(learning_rate) + ")")
-        datavis.append_training_curves_data(i, a, c)
-        datavis.update_image1(im)
-        datavis.append_data_histograms(i, al, ac)
 
     # compute test values for visualisation
     if update_test_data:
-        a, c, im = sess.run([accuracy, cross_entropy, It], {X: mnist.test.images, Y_: mnist.test.labels, tst: True})
+        a, c = sess.run([accuracy, cross_entropy], {X: mnist.test.images, Y_: mnist.test.labels, tst: True})
         print(str(i) + ": ********* epoch " + str(i*100//mnist.train.images.shape[0]+1) + " ********* test accuracy:" + str(a) + " test loss: " + str(c))
-        datavis.append_test_curves_data(i, a, c)
-        datavis.update_image2(im)
+
 
     # the backpropagation training step
     sess.run(train_step, {X: batch_X, Y_: batch_Y, lr: learning_rate, tst: False})
     sess.run(update_ema, {X: batch_X, Y_: batch_Y, tst: False, iter: i})
 
-datavis.animate(training_step, iterations=10000+1, train_data_update_freq=20, test_data_update_freq=100, more_tests_at_start=True)
+
 
 # to save the animation as a movie, add save_movie=True as an argument to datavis.animate
 # to disable the visualisation use the following line instead of the datavis.animate line
 # for i in range(10000+1): training_step(i, i % 100 == 0, i % 20 == 0)
 
-print("max test accuracy: " + str(datavis.get_max_test_accuracy()))
+for step in range(101):
+    training_step(step, False, True)
+    if step % 100 == 0:
+        training_step(step, True, False)
 
 # Some results to expect:
 # (In all runs, if sigmoids are used, all biases are initialised at 0, if RELUs are used,
