@@ -15,8 +15,9 @@
 
 import tensorflow as tf
 import tensorflowvisu
-import math
+import math, os
 from tensorflow.examples.tutorials.mnist import input_data as mnist_data
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 print("Tensorflow version " + tf.__version__)
 tf.set_random_seed(0.0)
 
@@ -127,6 +128,8 @@ update_ema = tf.group(update_ema1, update_ema2, update_ema3, update_ema4)
 cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=Ylogits, labels=Y_)
 cross_entropy = tf.reduce_mean(cross_entropy)*100
 
+tf.summary.scalar('ce', cross_entropy)
+
 # accuracy of the trained model, between 0 (worst) and 1 (best)
 correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -136,9 +139,6 @@ allweights = tf.concat([tf.reshape(W1, [-1]), tf.reshape(W2, [-1]), tf.reshape(W
 allbiases  = tf.concat([tf.reshape(B1, [-1]), tf.reshape(B2, [-1]), tf.reshape(B3, [-1]), tf.reshape(B4, [-1]), tf.reshape(B5, [-1])], 0)
 conv_activations = tf.concat([tf.reshape(tf.reduce_max(Y1r, [0]), [-1]), tf.reshape(tf.reduce_max(Y2r, [0]), [-1]), tf.reshape(tf.reduce_max(Y3r, [0]), [-1])], 0)
 dense_activations = tf.reduce_max(Y4r, [0])
-I = tensorflowvisu.tf_format_mnist_images(X, Y, Y_)
-It = tensorflowvisu.tf_format_mnist_images(X, Y, Y_, 1000, lines=25)
-datavis = tensorflowvisu.MnistDataVis(title4="batch-max conv activation", title5="batch-max dense activations", histogram4colornum=2, histogram5colornum=2)
 
 # training step, the learning rate is a placeholder
 train_step = tf.train.AdamOptimizer(lr).minimize(cross_entropy)
@@ -148,6 +148,8 @@ init = tf.global_variables_initializer()
 sess = tf.Session()
 sess.run(init)
 
+writer = tf.summary.FileWriter('./log', sess.graph)
+merge_op = tf.summary.merge_all()
 
 # You can call this function in a loop to train the model, 100 images at a time
 def training_step(i, update_test_data, update_train_data):
@@ -158,35 +160,35 @@ def training_step(i, update_test_data, update_train_data):
     # learning rate decay
     max_learning_rate = 0.02
     min_learning_rate = 0.0001
-    decay_speed = 1600
+    decay_speed = 1600.0
     learning_rate = min_learning_rate + (max_learning_rate - min_learning_rate) * math.exp(-i/decay_speed)
 
     # compute training values for visualisation
     if update_train_data:
-        a, c, im, ca, da = sess.run([accuracy, cross_entropy, I, conv_activations, dense_activations], {X: batch_X, Y_: batch_Y, tst: False, pkeep: 1.0, pkeep_conv: 1.0})
+        a, c, ca, da = sess.run([accuracy, cross_entropy, conv_activations, dense_activations], {X: batch_X, Y_: batch_Y, tst: False, pkeep: 1.0, pkeep_conv: 1.0})
         print(str(i) + ": accuracy:" + str(a) + " loss: " + str(c) + " (lr:" + str(learning_rate) + ")")
-        datavis.append_training_curves_data(i, a, c)
-        datavis.update_image1(im)
-        datavis.append_data_histograms(i, ca, da)
+
 
     # compute test values for visualisation
     if update_test_data:
-        a, c, im = sess.run([accuracy, cross_entropy, It], {X: mnist.test.images, Y_: mnist.test.labels, tst: True, pkeep: 1.0, pkeep_conv: 1.0})
+        a, c= sess.run([accuracy, cross_entropy], {X: mnist.test.images, Y_: mnist.test.labels, tst: True, pkeep: 1.0, pkeep_conv: 1.0})
         print(str(i) + ": ********* epoch " + str(i*100//mnist.train.images.shape[0]+1) + " ********* test accuracy:" + str(a) + " test loss: " + str(c))
-        datavis.append_test_curves_data(i, a, c)
-        datavis.update_image2(im)
 
     # the backpropagation training step
-    sess.run(train_step, {X: batch_X, Y_: batch_Y, lr: learning_rate, tst: False, pkeep: 0.75, pkeep_conv: 1.0})
+    _, result = sess.run([train_step, merge_op], {X: batch_X, Y_: batch_Y, lr: learning_rate, tst: False, pkeep: 0.75, pkeep_conv: 1.0})
     sess.run(update_ema, {X: batch_X, Y_: batch_Y, tst: False, iter: i, pkeep: 1.0, pkeep_conv: 1.0})
+    writer.add_summary(result, i)
 
-datavis.animate(training_step, 10001, train_data_update_freq=20, test_data_update_freq=100)
+
 
 # to save the animation as a movie, add save_movie=True as an argument to datavis.animate
 # to disable the visualisation use the following line instead of the datavis.animate line
 # for i in range(10000+1): training_step(i, i % 100 == 0, i % 20 == 0)
 
-print("max test accuracy: " + str(datavis.get_max_test_accuracy()))
+for step in range(101):
+    training_step(step, False, True)
+    if step % 100 == 0:
+        training_step(step, True, False)
 
 ## All runs 10K iterations:
 # batch norm 0.998 lr 0.03-0.0001-1000 no BN offset or scale: best 0.9933 but most of the way under 0.993 and lots of variation. test loss under 2.2 though
